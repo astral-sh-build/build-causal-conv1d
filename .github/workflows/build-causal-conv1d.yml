@@ -1,0 +1,180 @@
+name: CausalConv1d
+
+permissions: {}
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      CAUSAL_CONV1D_VERSION:
+        description: "CausalConv1d version"
+        required: true
+        default: "v1.5.4"
+        type: string
+  release:
+    types: [created]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  plan-matrix:
+    name: Plan CausalConv1d build matrix
+    runs-on: ubuntu-latest
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-build') }}
+    permissions:
+      contents: read # for actions/checkout
+    outputs:
+      matrix: ${{ steps.generate-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6
+
+      - name: Generate build matrix
+        id: generate-matrix
+        run: |
+          echo "matrix=$(uv run --script plan-matrix.py)" >> $GITHUB_OUTPUT
+
+  build-wheels:
+    name: Build Wheel
+    needs: [plan-matrix]
+    runs-on: ${{ matrix.RUNNER }}
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-build') }}
+
+    permissions:
+      contents: write
+      actions: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan-matrix.outputs.matrix) }}
+
+    steps:
+      - name: Determine CausalConv1d version
+        id: causal-conv1d-version
+        run: |
+          # Extract CausalConv1d version from tag. Tags can be either:
+          # - v1.5.4 (legacy format; maps directly to CausalConv1d version)
+          # - v1.5.4-r1 (new format; strip -rN suffix to get CausalConv1d version)
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            # Remove -rN suffix if present
+            CAUSAL_CONV1D_VERSION="${TAG%-r*}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            CAUSAL_CONV1D_VERSION="${INPUTS_CAUSAL_CONV1D_VERSION}"
+          else
+            CAUSAL_CONV1D_VERSION="v1.5.4"
+          fi
+          echo "version=${CAUSAL_CONV1D_VERSION}" >> $GITHUB_OUTPUT
+          echo "Using CausalConv1d version: ${CAUSAL_CONV1D_VERSION}"
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUTS_CAUSAL_CONV1D_VERSION: ${{ inputs.CAUSAL_CONV1D_VERSION }}
+
+      - name: Checkout Causal Conv1d
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          repository: Dao-AILab/causal-conv1d
+          ref: ${{ steps.causal-conv1d-version.outputs.version }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Checkout utils
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          path: build_scripts
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6
+        with:
+          enable-cache: false
+
+      - name: Set CUDA and PyTorch versions
+        run: |
+          echo "MATRIX_CUDA_VERSION=$(echo ${{ matrix.MATRIX_CUDA_VERSION }})" >> $GITHUB_ENV
+          echo "MATRIX_TORCH_VERSION=$(echo ${{ matrix.MATRIX_TORCH_VERSION }})" >> $GITHUB_ENV
+          echo "MATRIX_PYTHON_VERSION=$(echo ${{ matrix.MATRIX_PYTHON_VERSION }})" >> $GITHUB_ENV
+          echo "MANYLINUX_CUDA_VERSION=$(echo ${{ matrix.MANYLINUX_CUDA_VERSION }})" >> $GITHUB_ENV
+          echo "MANYLINUX_CUDA_COMPAT_VERSION=$(echo ${{ matrix.MANYLINUX_CUDA_COMPAT_VERSION }})" >> $GITHUB_ENV
+          echo "MANYLINUX_GLIBC_VERSION=$(echo ${{ matrix.MANYLINUX_GLIBC_VERSION }})" >> $GITHUB_ENV
+          echo "CI_AUDITWHEEL_EXCLUDES=$(echo ${{ matrix.CI_AUDITWHEEL_EXCLUDES }})" >> $GITHUB_ENV
+          echo "TORCH_CUDA_VERSION=$(echo ${{ matrix.TORCH_CUDA_VERSION }})" >> $GITHUB_ENV
+
+      - name: Install cibuildwheel
+        run: |
+          uv venv --python 3.13
+          uv pip install cibuildwheel
+
+      - name: Build wheels for CausalConv1d ${{ matrix.torch-version }}+cu${{ matrix.cuda-version }}
+        run: |
+          .venv/bin/cibuildwheel --output-dir dist
+        env:
+          CIBW_ARCHS_LINUX: ${{ matrix.target-arch }}
+          CIBW_BUILD: cp${{ env.MATRIX_PYTHON_VERSION }}-*64
+          CIBW_MANYLINUX_X86_64_IMAGE: pytorch/manylinux2_28-builder:cuda${{ env.MANYLINUX_CUDA_VERSION }}
+          CIBW_MANYLINUX_AARCH64_IMAGE: pytorch/manylinuxaarch64-builder:cuda${{ env.MANYLINUX_CUDA_VERSION }}
+          CIBW_BEFORE_ALL: >
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+          CIBW_BEFORE_BUILD_LINUX: >
+            uv pip install typing-extensions==4.12.2 setuptools wheel ninja psutil &&
+            uv pip install --no-cache-dir torch==${{ matrix.torch-version }} --index-url https://download.pytorch.org/whl/cu${TORCH_CUDA_VERSION}
+          CIBW_ENVIRONMENT: >
+            PATH=$PATH:/root/.local/bin
+            CUDA_HOME="/usr/local/cuda-${{ env.MANYLINUX_CUDA_VERSION }}"
+            LIBRARY_PATH="/usr/lib64"
+            LD_LIBRARY_PATH="/usr/lib64:/usr/local/cuda-${{ env.MANYLINUX_CUDA_VERSION }}/lib64:/usr/local/cuda-${{ env.MANYLINUX_CUDA_VERSION }}/targets/${{ matrix.target-arch }}-linux/lib:/usr/local/cuda-${{ env.MANYLINUX_CUDA_VERSION }}/extras/CUPTI/lib64"
+            LDFLAGS="-ldl -L/usr/local/cuda-${{ env.MANYLINUX_CUDA_VERSION }}/targets/${{ matrix.target-arch }}-linux/lib/stubs"
+            AUDITWHEEL_PLAT="manylinux_${{ env.MANYLINUX_GLIBC_VERSION }}_$(uname -m)"
+            MATRIX_CUDA_VERSION=${{ env.MATRIX_CUDA_VERSION }}
+            MATRIX_TORCH_VERSION=${{ env.MATRIX_TORCH_VERSION }}
+            MATRIX_PYTHON_VERSION=${{ env.MATRIX_PYTHON_VERSION }}
+            TORCH_CUDA_VERSION=${{ env.TORCH_CUDA_VERSION }}
+            CAUSAL_CONV1D_FORCE_BUILD="TRUE"
+            CAUSAL_CONV1D_FORCE_CXX11_ABI=${{ matrix.cxx11-abi }}
+            MAX_JOBS=8
+            UV_PYTHON=/opt/python/cp${{ env.MATRIX_PYTHON_VERSION }}-cp${{ env.MATRIX_PYTHON_VERSION }}/bin/python
+            CI_AUDITWHEEL_EXCLUDES="${{ env.CI_AUDITWHEEL_EXCLUDES }}"
+          CIBW_SKIP: "*musllinux*"
+          CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w /tmp/cibuildwheel/repaired_wheel {wheel} ${CI_AUDITWHEEL_EXCLUDES}"
+          CIBW_BUILD_FRONTEND: "build[uv]; args: --no-isolation"
+
+      - name: Log Built Wheels
+        run: |
+          wheel_name=$(ls dist/*whl | xargs -n 1 basename)
+          echo "wheel_name=${wheel_name}" >> $GITHUB_ENV
+          ls dist
+
+      - name: Rename wheel
+        run: |
+          tmpname=cu${{ matrix.cuda-version }}torch${{ matrix.torch-version }}cxx11abi${{ matrix.cxx11-abi }}
+          wheel_name=$(ls dist/*whl | xargs -n 1 basename | sed "s/-/+$tmpname-/2")
+          ls dist/*whl |xargs -I {} mv {} dist/${wheel_name}
+          echo "wheel_name=${wheel_name}" >> $GITHUB_ENV
+          ls dist
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: github.event_name != 'release'
+        with:
+          name: ${{env.wheel_name}}
+          path: dist/${{env.wheel_name}}
+          if-no-files-found: error
+
+      - name: Upload wheels to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@6da8fa9354ddfdc4aeace5fc48d7f679b5214090 # v2.4.1
+        with:
+          files: ./dist/*.whl
+          tag_name: ${{ github.ref_name }}
+          append_body: true
