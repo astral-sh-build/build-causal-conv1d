@@ -1,0 +1,26 @@
+name: Format
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "**.yml"
+      - "**.yaml"
+
+jobs:
+  prettier:
+    name: Prettier
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm install -g prettier
+      - run: prettier --check "**/*.{yml,yaml}"
