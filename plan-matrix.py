@@ -47,13 +47,19 @@ PYTORCH_CUDA_RANGES: dict[str, tuple[str, str]] = {
 }
 
 # Actual CUDA versions to build against for each PyTorch version.
-PYTORCH_CUDA_VERSIONS: dict[str, list[str]] = {
-    "2.4": ["12.8"],
-    "2.5": ["12.8"],
-    "2.6": ["12.8"],
-    "2.7": ["12.8"],
-    "2.8": ["12.9"],
-    "2.9": ["12.9", "13.0"],
+PYTORCH_CUDA_VERSIONS: dict[tuple[str, str], list[str]] = {
+    ("2.4", "x86_64"): ["12.1", "12.4"],
+    ("2.4", "aarch64"): ["12.4"],
+    ("2.5", "x86_64"): ["12.1", "12.4"],
+    ("2.5", "aarch64"): ["12.4"],
+    ("2.6", "x86_64"): ["12.4", "12.6"],
+    ("2.6", "aarch64"): ["12.6"],
+    ("2.7", "x86_64"): ["12.6", "12.8"],
+    ("2.7", "aarch64"): ["12.8"],
+    ("2.8", "x86_64"): ["12.6", "12.8", "12.9"],
+    ("2.8", "aarch64"): ["12.9"],
+    ("2.9", "x86_64"): ["12.6", "12.8", "12.9", "13.0"],
+    ("2.9", "aarch64"): ["12.6", "12.8", "12.9", "13.0"],
 }
 
 # The glibc version to use for each PyTorch version, for manylinux builds.
@@ -101,17 +107,6 @@ AUDITWHEEL_CUDA_VERSION_EXCLUDES = {
     ],
 }
 
-# CXX11 ABI configuration for each PyTorch version
-# 2.4-2.5 use FALSE, 2.6+ use TRUE
-TORCH_CXX11_ABI = {
-    "2.4": ["FALSE"],
-    "2.5": ["FALSE"],
-    "2.6": ["FALSE", "TRUE"],
-    "2.7": ["TRUE"],
-    "2.8": ["TRUE"],
-    "2.9": ["TRUE"],
-}
-
 # Matrix exclusions.
 EXCLUSIONS = [
     # No exclusions yet.
@@ -135,19 +130,29 @@ def main() -> None:
             torch_version_parsed = Version(torch_version)
             torch_x_y = f"{torch_version_parsed.major}.{torch_version_parsed.minor}"
             for python_version in TORCH_PYTHON_SUPPORT[torch_x_y]:
-                cuda_versions = PYTORCH_CUDA_VERSIONS[torch_x_y]
+                cuda_versions = PYTORCH_CUDA_VERSIONS[(torch_x_y, target_arch)]
                 for cuda_version in cuda_versions:
-                    for cxx11_abi in TORCH_CXX11_ABI[torch_x_y]:
-                        row = {
-                            "target-arch": target_arch,
-                            "torch-version": str(torch_version_parsed),
-                            "python-version": python_version,
-                            "cuda-version": cuda_version,
-                            "cxx11-abi": cxx11_abi,
-                        }
+                    cuda_version_parsed = Version(cuda_version)
 
-                        if row not in EXCLUSIONS:
-                            rows.append(row)
+                    # The CXX11 ABI became the default in PyTorch 2.7.0, but was also used in
+                    # PyTorch 2.6.0 (but _only_ for the CUDA 12.6 builds).
+                    #
+                    # See: https://pytorch.org/blog/pytorch2-6/
+                    cxx11_abi = torch_version_parsed >= Version("2.7.0") or (
+                        torch_version_parsed == Version("2.6.0")
+                        and cuda_version_parsed >= Version("12.6")
+                    )
+
+                    row = {
+                        "target-arch": target_arch,
+                        "torch-version": str(torch_version_parsed),
+                        "python-version": python_version,
+                        "cuda-version": cuda_version,
+                        "cxx11-abi": "TRUE" if cxx11_abi else "FALSE",
+                    }
+
+                    if row not in EXCLUSIONS:
+                        rows.append(row)
 
     # Transform each row to add various nice-to-have representations of fields.
     for row in rows:
@@ -189,20 +194,6 @@ def main() -> None:
         )
         row["CI_AUDITWHEEL_EXCLUDES"] = " ".join(
             f"--exclude {lib}" for lib in auditwheel_excludes
-        )
-
-        # TORCH_CUDA_VERSION: the CUDA version to download PyTorch for.
-        # This is the CUDA version clamped to the min/max supported by the
-        # given PyTorch version.
-        # e.g. we can have system CUDA version being 11.7 but if torch==1.12 then we need to download the wheel from cu116
-        # see https://github.com/pytorch/pytorch/blob/main/RELEASE.md#release-compatibility-matrix
-        torch_x_y = f"{torch_version.major}.{torch_version.minor}"
-        minv, maxv = PYTORCH_CUDA_RANGES[torch_x_y]
-        torch_cuda_version = max(
-            min(Version(row["cuda-version"]), Version(maxv)), Version(minv)
-        )
-        row["TORCH_CUDA_VERSION"] = (
-            f"{torch_cuda_version.major}{torch_cuda_version.minor}"
         )
 
         # RUNNER: the GitHub Actions runner to use.
