@@ -110,7 +110,6 @@ jobs:
           echo "MANYLINUX_CUDA_COMPAT_VERSION=$(echo ${{ matrix.MANYLINUX_CUDA_COMPAT_VERSION }})" >> $GITHUB_ENV
           echo "MANYLINUX_GLIBC_VERSION=$(echo ${{ matrix.MANYLINUX_GLIBC_VERSION }})" >> $GITHUB_ENV
           echo "CI_AUDITWHEEL_EXCLUDES=$(echo ${{ matrix.CI_AUDITWHEEL_EXCLUDES }})" >> $GITHUB_ENV
-          echo "TORCH_CUDA_VERSION=$(echo ${{ matrix.TORCH_CUDA_VERSION }})" >> $GITHUB_ENV
 
       - name: Install cibuildwheel
         run: |
@@ -129,7 +128,7 @@ jobs:
             curl -LsSf https://astral.sh/uv/install.sh | sh
           CIBW_BEFORE_BUILD_LINUX: >
             uv pip install typing-extensions==4.12.2 setuptools wheel ninja psutil &&
-            uv pip install --no-cache-dir torch==${{ matrix.torch-version }} --index-url https://download.pytorch.org/whl/cu${TORCH_CUDA_VERSION} &&
+            uv pip install --no-cache-dir torch==${{ matrix.torch-version }} --index-url https://download.pytorch.org/whl/cu${MATRIX_CUDA_VERSION} &&
             bash build_scripts/prepare_for_build.sh ${{ steps.causal-conv1d-version.outputs.version }}
           CIBW_ENVIRONMENT: >
             PATH=$PATH:/root/.local/bin
@@ -141,7 +140,6 @@ jobs:
             MATRIX_CUDA_VERSION=${{ env.MATRIX_CUDA_VERSION }}
             MATRIX_TORCH_VERSION=${{ env.MATRIX_TORCH_VERSION }}
             MATRIX_PYTHON_VERSION=${{ env.MATRIX_PYTHON_VERSION }}
-            TORCH_CUDA_VERSION=${{ env.TORCH_CUDA_VERSION }}
             CAUSAL_CONV1D_FORCE_BUILD="TRUE"
             CAUSAL_CONV1D_FORCE_CXX11_ABI=${{ matrix.cxx11-abi }}
             MAX_JOBS=8
