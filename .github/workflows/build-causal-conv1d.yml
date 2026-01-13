@@ -10,7 +10,7 @@ on:
       CAUSAL_CONV1D_VERSION:
         description: "CausalConv1d version"
         required: true
-        default: "v1.5.4"
+        default: "v1.6.0"
         type: string
   release:
     types: [created]
@@ -70,7 +70,7 @@ jobs:
           elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             CAUSAL_CONV1D_VERSION="${INPUTS_CAUSAL_CONV1D_VERSION}"
           else
-            CAUSAL_CONV1D_VERSION="v1.5.4"
+            CAUSAL_CONV1D_VERSION="v1.6.0"
           fi
           echo "version=${CAUSAL_CONV1D_VERSION}" >> $GITHUB_OUTPUT
           echo "Using CausalConv1d version: ${CAUSAL_CONV1D_VERSION}"
