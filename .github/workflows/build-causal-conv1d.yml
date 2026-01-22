@@ -126,9 +126,11 @@ jobs:
           CIBW_MANYLINUX_AARCH64_IMAGE: pytorch/manylinuxaarch64-builder:cuda${{ env.MANYLINUX_CUDA_VERSION }}
           CIBW_BEFORE_ALL: >
             curl -LsSf https://astral.sh/uv/install.sh | sh
+          # TODO(charlie): The PyTorch CUDA 12.9 index is missing cuda-bindings==12.9.4, but PyTorch 2.10 depends on it.
           CIBW_BEFORE_BUILD_LINUX: >
             uv pip install typing-extensions==4.12.2 setuptools wheel ninja psutil &&
-            uv pip install --no-cache-dir torch==${{ matrix.torch-version }} --index-url https://download.pytorch.org/whl/cu${MATRIX_CUDA_VERSION} &&
+            if [ "${MATRIX_CUDA_VERSION}" = "129" ] && [ "${MATRIX_TORCH_VERSION}" = "2.10" ]; then uv pip install cuda-bindings==12.9.4; fi &&
+            uv pip install --no-cache-dir --index-strategy unsafe-first-match torch==${{ matrix.torch-version }} --index-url https://download.pytorch.org/whl/cu${MATRIX_CUDA_VERSION} &&
             bash build_scripts/prepare_for_build.sh ${{ steps.causal-conv1d-version.outputs.version }}
           CIBW_ENVIRONMENT: >
             PATH=$PATH:/root/.local/bin
