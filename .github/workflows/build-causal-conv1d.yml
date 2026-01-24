@@ -88,6 +88,10 @@ jobs:
           ref: ${{ steps.causal-conv1d-version.outputs.version }}
           persist-credentials: false
 
+      - name: Get source commit SHA
+        id: source-commit
+        run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
         with:
           python-version: "3.13"
@@ -152,6 +156,21 @@ jobs:
           CIBW_SKIP: "*musllinux*"
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w /tmp/cibuildwheel/repaired_wheel {wheel} ${CI_AUDITWHEEL_EXCLUDES}"
           CIBW_BUILD_FRONTEND: "build[uv]; args: --no-isolation"
+
+      - name: Embed SBOM into wheel
+        run: |
+          for wheel in dist/*.whl; do
+            uv run --no-project --script build_scripts/embed_patches.py "$wheel" "build_scripts/patches/${CAUSAL_CONV1D_VERSION}" \
+              --source-repo "https://github.com/Dao-AILab/causal-conv1d" \
+              --source-tag "${CAUSAL_CONV1D_VERSION}" \
+              --source-commit "${SOURCE_COMMIT}" \
+              --build-repo "https://github.com/astral-sh-build/build-causal-conv1d" \
+              --build-commit "${BUILD_COMMIT}"
+          done
+        env:
+          CAUSAL_CONV1D_VERSION: ${{ steps.causal-conv1d-version.outputs.version }}
+          SOURCE_COMMIT: ${{ steps.source-commit.outputs.sha }}
+          BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Log Built Wheels
         run: |
