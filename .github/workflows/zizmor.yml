@@ -25,8 +25,9 @@ jobs:
           persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@b6f9e9c734eaef252216c74d204178ad0ce70fd1
-
+        uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca # v6
+        with:
+          version: "0.9.26"
       - name: Run Zizmor analysis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
