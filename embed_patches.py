@@ -6,6 +6,7 @@
 import argparse
 import base64
 import csv
+import email
 import hashlib
 import io
 import json
@@ -69,9 +70,72 @@ def compute_hash(content: bytes) -> str:
     return f"sha256={base64.urlsafe_b64encode(digest).rstrip(b'=').decode()}"
 
 
+def augment_metadata(
+    metadata_content: str,
+    source_repo: str,
+    source_commit: str,
+    patches: dict[str, str],
+) -> str:
+    """Augment the wheel metadata with provenance information.
+
+    Args:
+        metadata_content: The original METADATA content.
+        source_repo: The source repository URL.
+        source_commit: The source commit SHA.
+        patches: Map of patch filename -> patch content.
+
+    Returns:
+        The augmented METADATA content.
+    """
+    # Parse the metadata.
+    wheel_metadata = email.message_from_string(metadata_content)
+
+    # Store the existing description.
+    description = wheel_metadata.get_payload() or ""
+    assert isinstance(description, str)
+    wheel_metadata.set_payload("")
+
+    # Set the description content-type to Markdown.
+    match wheel_metadata.get("Description-Content-Type"):
+        case None:
+            wheel_metadata.add_header("Description-Content-Type", "text/markdown")
+        case "text/markdown":
+            pass
+        case value:
+            raise ValueError(f"Unexpected `Description-Content-Type` header: {value}")
+
+    # Add provenance to the description.
+    if description:
+        description += "\n\n"
+        description += "---"
+        description += "\n\n"
+
+    # Extract `owner/repo` from the repository URL (e.g.,
+    # `https://github.com/open-mmlab/mmcv` -> `open-mmlab/mmcv`).
+    repo_name = "/".join(source_repo.rstrip("/").split("/")[-2:])
+    truncated_sha = source_commit[:7]
+    commit_url = f"{source_repo.rstrip('/')}/commit/{source_commit}"
+
+    description += (
+        f"This distribution was built by Astral from [{repo_name}@{truncated_sha}]({commit_url})."
+    )
+
+    if patches:
+        description += "\n\n"
+        description += "The following patches were applied to the upstream source:\n"
+        for patch_name, patch_content in sorted(patches.items()):
+            description += f"\n**{patch_name}**\n"
+            description += f"```diff\n{patch_content}```\n"
+
+    description += "\n"
+    wheel_metadata.set_payload(description)
+
+    return wheel_metadata.as_string()
+
+
 def embed_sbom(
     wheel_path: Path,
-    patches_dir: Path,
+    patches_dir: Path | None,
     source_repo: str,
     source_tag: str,
     source_commit: str,
@@ -80,7 +144,10 @@ def embed_sbom(
 ) -> None:
     """Embed an SBOM into a wheel file."""
     # Find all .patch files.
-    patch_files = sorted(patches_dir.glob("*.patch"))
+    patch_files = sorted(patches_dir.glob("*.patch")) if patches_dir else []
+
+    # Build the patches dict for both SBOM and description augmentation.
+    patches = {patch_file.name: patch_file.read_text() for patch_file in patch_files}
 
     # Build the SBOM.
     sbom = {
@@ -93,9 +160,7 @@ def embed_sbom(
             "repository": build_repo,
             "commit": build_commit,
         },
-        "patches": {
-            patch_file.name: patch_file.read_text() for patch_file in patch_files
-        },
+        "patches": patches,
     }
     sbom_content = json.dumps(sbom, indent=2) + "\n"
     sbom_bytes = sbom_content.encode("utf-8")
@@ -103,8 +168,20 @@ def embed_sbom(
     # Determine paths within the wheel.
     with zipfile.ZipFile(wheel_path, "r") as wheel:
         dist_info = get_dist_info_dir(wheel)
+        metadata_path = f"{dist_info}/METADATA"
         record_path = f"{dist_info}/RECORD"
         sbom_path = f"{dist_info}/sboms/astral.json"
+
+        # Read and augment METADATA.
+        metadata_content = wheel.read(metadata_path).decode("utf-8")
+        new_metadata = augment_metadata(
+            metadata_content,
+            source_repo=source_repo,
+            source_commit=source_commit,
+            patches=patches,
+        )
+        new_metadata_bytes = new_metadata.encode("utf-8")
+        metadata_hash = compute_hash(new_metadata_bytes)
 
         # Read existing RECORD.
         record_content = wheel.read(record_path).decode("utf-8")
@@ -115,11 +192,20 @@ def embed_sbom(
         reader = csv.reader(record_lines)
         writer = csv.writer(record_out)
         for row in reader:
-            if row and row[0] != record_path:  # Skip RECORD itself (added at end).
+            if not row:
+                continue
+            path = row[0]
+            # Skip RECORD itself (added at end) and METADATA (will be updated).
+            if path == record_path:
+                continue
+            if path == metadata_path:
+                # Update METADATA entry with new hash and size.
+                writer.writerow([metadata_path, metadata_hash, str(len(new_metadata_bytes))])
+            else:
                 writer.writerow(row)
 
         # Add SBOM entry.
-        sbom_hash = f"sha256={base64.urlsafe_b64encode(hashlib.sha256(sbom_bytes).digest()).rstrip(b'=').decode()}"
+        sbom_hash = compute_hash(sbom_bytes)
         writer.writerow([sbom_path, sbom_hash, str(len(sbom_bytes))])
 
         writer.writerow([record_path, "", ""])  # RECORD has no hash.
@@ -130,7 +216,10 @@ def embed_sbom(
     rewrite_zip_with_bytes(
         wheel_path,
         temp_path,
-        target_filenames={record_path: new_record},
+        target_filenames={
+            metadata_path: new_metadata,
+            record_path: new_record,
+        },
         additions={sbom_path: sbom_content},
     )
 
@@ -165,12 +254,12 @@ def main() -> None:
     if not args.wheel.exists():
         parser.error(f"Wheel not found: {args.wheel}")
 
-    if not args.patches_dir.exists():
-        parser.error(f"Patches directory not found: {args.patches_dir}")
+    # If patches directory doesn't exist, use None to indicate no patches.
+    patches_dir = args.patches_dir if args.patches_dir.exists() else None
 
     embed_sbom(
         args.wheel,
-        args.patches_dir,
+        patches_dir,
         source_repo=args.source_repo,
         source_tag=args.source_tag,
         source_commit=args.source_commit,
