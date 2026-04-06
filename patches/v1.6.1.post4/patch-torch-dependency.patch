@@ -1,0 +1,13 @@
+diff --git a/setup.py b/setup.py
+index 7f5faaa..0f57f8a 100644
+--- a/setup.py
++++ b/setup.py
+@@ -385,7 +385,7 @@ setup(
+     },
+     python_requires=">=3.9",
+     install_requires=[
+-        "torch",
++        f"torch=={TORCH_MAJOR}.{TORCH_MINOR}.*",
+         "packaging",
+         "ninja",
+     ],
