@@ -1,0 +1,22 @@
+diff --git a/setup.py b/setup.py
+index 1234567..abcdefg 100644
+--- a/setup.py
++++ b/setup.py
+@@ -261,13 +261,14 @@ def get_package_version():
+     with open(Path(this_dir) / "causal_conv1d" / "__init__.py", "r") as f:
+         version_match = re.search(r"^__version__\s*=\s*(.*)$", f.read(), re.MULTILINE)
+     public_version = ast.literal_eval(version_match.group(1))
+-    local_version = os.environ.get("CAUSAL_CONV1D_LOCAL_VERSION")
+-    if local_version:
+-        return f"{public_version}+{local_version}"
+-    else:
+-        return str(public_version)
++    # Auto-generate local version from CUDA and PyTorch versions.
++    cuda_version = torch.version.cuda
++    torch_version = ".".join(torch.__version__.split(".")[:2])
++    if cuda_version:
++        return f"{public_version}+cu.{cuda_version}.torch.{torch_version}"
++    return str(public_version)
+
+
+ def get_wheel_url():
