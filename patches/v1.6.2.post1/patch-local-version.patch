@@ -1,0 +1,16 @@
+diff --git a/setup.py b/setup.py
+index 0bcdd81..d48ad28 100644
+--- a/setup.py
++++ b/setup.py
+@@ -261,5 +261,6 @@ def get_package_version():
+-    local_version = os.environ.get("CAUSAL_CONV1D_LOCAL_VERSION")
+-    if local_version:
+-        return f"{public_version}+{local_version}"
+-    else:
+-        return str(public_version)
++    # Auto-generate local version from CUDA and PyTorch versions.
++    cuda_version = torch.version.cuda
++    torch_version = ".".join(torch.__version__.split(".")[:2])
++    if cuda_version:
++        return f"{public_version}+cu.{cuda_version}.torch.{torch_version}"
++    return str(public_version)
