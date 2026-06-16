@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # ///
-"""Embed an Astral-specific SBOM into a wheel's .dist-info/sboms/ directory."""
+"""Embed Astral-specific metadata into a wheel's .dist-info directory."""
 
 import argparse
 import base64
@@ -12,22 +12,23 @@ import io
 import json
 import os
 import zipfile
-from pathlib import Path
+from email.message import Message
+from pathlib import Path, PurePosixPath
 
 
 def rewrite_zip_with_bytes(
     src_zip_path: str | os.PathLike[str],
     dst_zip_path: str | os.PathLike[str],
-    target_filenames: dict[str, str],
-    additions: dict[str, str] | None = None,
+    target_filenames: dict[str, bytes],
+    additions: dict[str, bytes] | None = None,
 ) -> None:
     """Rewrite a zip file, replacing and adding files.
 
     Args:
         src_zip_path: Path to the source zip file.
         dst_zip_path: Path to the destination zip file.
-        target_filenames: Map of filename -> content for files to replace.
-        additions: Map of filename -> content for files to add.
+        target_filenames: Map of filename -> byte content for files to replace.
+        additions: Map of filename -> byte content for files to add.
     """
     with (
         zipfile.ZipFile(src_zip_path, "r") as zin,
@@ -36,8 +37,9 @@ def rewrite_zip_with_bytes(
         for original_info in zin.infolist():
             compress_type = original_info.compress_type
 
-            if data := target_filenames.get(original_info.filename):
+            if original_info.filename in target_filenames:
                 # Write out the updated data.
+                data = target_filenames[original_info.filename]
                 zout.writestr(
                     original_info,
                     data,
@@ -70,11 +72,43 @@ def compute_hash(content: bytes) -> str:
     return f"sha256={base64.urlsafe_b64encode(digest).rstrip(b'=').decode()}"
 
 
+def parse_metadata_version(value: str) -> tuple[int, ...]:
+    """Parse a Core Metadata version for comparison."""
+    try:
+        return tuple(int(part) for part in value.split("."))
+    except ValueError as exc:
+        raise ValueError(f"Unexpected Metadata-Version: {value}") from exc
+
+
+def set_license_expression(
+    wheel_metadata: Message, license_expression: str | None
+) -> None:
+    """Set PEP 639 license metadata."""
+    if license_expression is None:
+        return
+
+    metadata_version = wheel_metadata.get("Metadata-Version")
+    if metadata_version is None:
+        wheel_metadata.add_header("Metadata-Version", "2.4")
+    elif parse_metadata_version(metadata_version) < (2, 4):
+        wheel_metadata.replace_header("Metadata-Version", "2.4")
+
+    # Core Metadata 2.4 makes License and License-Expression mutually exclusive.
+    del wheel_metadata["License"]
+
+    if wheel_metadata.get("License-Expression") is None:
+        wheel_metadata.add_header("License-Expression", license_expression)
+    else:
+        wheel_metadata.replace_header("License-Expression", license_expression)
+
+
 def augment_metadata(
     metadata_content: str,
     source_repo: str,
     source_commit: str,
     patches: dict[str, str],
+    license_expression: str | None,
+    license_files: list[str],
 ) -> str:
     """Augment the wheel metadata with provenance information.
 
@@ -83,6 +117,8 @@ def augment_metadata(
         source_repo: The source repository URL.
         source_commit: The source commit SHA.
         patches: Map of patch filename -> patch content.
+        license_expression: SPDX license expression to add to the metadata.
+        license_files: License-File paths to add to the metadata.
 
     Returns:
         The augmented METADATA content.
@@ -103,6 +139,15 @@ def augment_metadata(
             pass
         case value:
             raise ValueError(f"Unexpected `Description-Content-Type` header: {value}")
+
+    set_license_expression(wheel_metadata, license_expression)
+
+    # Record license files that are embedded under .dist-info/licenses/.
+    existing_license_files = set(wheel_metadata.get_all("License-File", []))
+    for license_file in license_files:
+        if license_file not in existing_license_files:
+            wheel_metadata.add_header("License-File", license_file)
+            existing_license_files.add(license_file)
 
     # Add provenance to the description.
     if description:
@@ -136,6 +181,8 @@ def augment_metadata(
 def embed_sbom(
     wheel_path: Path,
     patches_dir: Path | None,
+    license_files: list[tuple[Path, str]],
+    license_expression: str | None,
     source_repo: str,
     source_tag: str,
     source_commit: str,
@@ -171,6 +218,11 @@ def embed_sbom(
         metadata_path = f"{dist_info}/METADATA"
         record_path = f"{dist_info}/RECORD"
         sbom_path = f"{dist_info}/sboms/astral.json"
+        existing_names = set(wheel.namelist())
+        license_file_contents = {
+            f"{dist_info}/licenses/{license_path}": source_path.read_bytes()
+            for source_path, license_path in license_files
+        }
 
         # Read and augment METADATA.
         metadata_content = wheel.read(metadata_path).decode("utf-8")
@@ -179,9 +231,15 @@ def embed_sbom(
             source_repo=source_repo,
             source_commit=source_commit,
             patches=patches,
+            license_expression=license_expression,
+            license_files=[license_path for _, license_path in license_files],
         )
         new_metadata_bytes = new_metadata.encode("utf-8")
-        metadata_hash = compute_hash(new_metadata_bytes)
+        generated_files = {
+            metadata_path: new_metadata_bytes,
+            sbom_path: sbom_bytes,
+            **license_file_contents,
+        }
 
         # Read existing RECORD.
         record_content = wheel.read(record_path).decode("utf-8")
@@ -195,32 +253,38 @@ def embed_sbom(
             if not row:
                 continue
             path = row[0]
-            # Skip RECORD itself (added at end) and METADATA (will be updated).
+            # Skip RECORD itself and generated files; all are added below.
             if path == record_path:
                 continue
-            if path == metadata_path:
-                # Update METADATA entry with new hash and size.
-                writer.writerow([metadata_path, metadata_hash, str(len(new_metadata_bytes))])
-            else:
-                writer.writerow(row)
+            if path in generated_files:
+                continue
+            writer.writerow(row)
 
-        # Add SBOM entry.
-        sbom_hash = compute_hash(sbom_bytes)
-        writer.writerow([sbom_path, sbom_hash, str(len(sbom_bytes))])
+        for path, content in generated_files.items():
+            writer.writerow([path, compute_hash(content), str(len(content))])
 
         writer.writerow([record_path, "", ""])  # RECORD has no hash.
         new_record = record_out.getvalue()
+        new_record_bytes = new_record.encode("utf-8")
+
+        replacements = {
+            metadata_path: new_metadata_bytes,
+            record_path: new_record_bytes,
+        }
+        additions = {}
+        for path, content in {sbom_path: sbom_bytes, **license_file_contents}.items():
+            if path in existing_names:
+                replacements[path] = content
+            else:
+                additions[path] = content
 
     # Rewrite the wheel.
     temp_path = wheel_path.with_suffix(".tmp")
     rewrite_zip_with_bytes(
         wheel_path,
         temp_path,
-        target_filenames={
-            metadata_path: new_metadata,
-            record_path: new_record,
-        },
-        additions={sbom_path: sbom_content},
+        target_filenames=replacements,
+        additions=additions,
     )
 
     # Replace original wheel.
@@ -228,9 +292,31 @@ def embed_sbom(
     print(f"Embedded SBOM with {len(patch_files)} patch(es) into {wheel_path}")
 
 
+def parse_license_file_spec(parser: argparse.ArgumentParser, spec: str) -> tuple[Path, str]:
+    """Parse a SOURCE:DEST license-file argument."""
+    if ":" not in spec:
+        parser.error(f"Invalid --license-file value, expected SOURCE:DEST: {spec}")
+    source, destination = spec.split(":", 1)
+    source_path = Path(source)
+    if not source_path.is_file():
+        parser.error(f"License file not found: {source_path}")
+
+    destination_path = PurePosixPath(destination)
+    if (
+        not destination
+        or destination_path.is_absolute()
+        or any(part in {"", ".."} for part in destination_path.parts)
+    ):
+        parser.error(
+            f"License file destination must be a relative path under .dist-info/licenses/: {destination}"
+        )
+
+    return source_path, destination_path.as_posix()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Embed an Astral-specific SBOM into a wheel's .dist-info/sboms/ directory."
+        description="Embed Astral-specific metadata into a wheel's .dist-info directory."
     )
     parser.add_argument("wheel", type=Path, help="Path to the wheel file")
     parser.add_argument("patches_dir", type=Path, help="Path to the patches directory")
@@ -249,6 +335,21 @@ def main() -> None:
     parser.add_argument(
         "--build-commit", type=str, required=True, help="Build git commit SHA"
     )
+    parser.add_argument(
+        "--license-file",
+        action="append",
+        default=[],
+        metavar="SOURCE:DEST",
+        help=(
+            "Embed SOURCE into the wheel's .dist-info/licenses/DEST and add "
+            "License-File: DEST metadata. May be passed multiple times."
+        ),
+    )
+    parser.add_argument(
+        "--license-expression",
+        type=str,
+        help="Set the wheel's PEP 639 License-Expression metadata.",
+    )
     args = parser.parse_args()
 
     if not args.wheel.exists():
@@ -256,10 +357,23 @@ def main() -> None:
 
     # If patches directory doesn't exist, use None to indicate no patches.
     patches_dir = args.patches_dir if args.patches_dir.exists() else None
+    license_files = [
+        parse_license_file_spec(parser, license_file)
+        for license_file in args.license_file
+    ]
+    license_expression = (
+        args.license_expression.strip()
+        if args.license_expression is not None
+        else None
+    )
+    if args.license_expression is not None and not license_expression:
+        parser.error("--license-expression must not be empty")
 
     embed_sbom(
         args.wheel,
         patches_dir,
+        license_files,
+        license_expression,
         source_repo=args.source_repo,
         source_tag=args.source_tag,
         source_commit=args.source_commit,
