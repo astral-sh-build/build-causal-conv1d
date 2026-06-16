@@ -160,7 +160,7 @@ jobs:
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: "auditwheel repair -w /tmp/cibuildwheel/repaired_wheel {wheel} ${CI_AUDITWHEEL_EXCLUDES}"
           CIBW_BUILD_FRONTEND: "build[uv]; args: --no-isolation"
 
-      - name: Embed SBOM into wheel
+      - name: Embed metadata into wheel
         run: |
           for wheel in dist/*.whl; do
             uv run --no-project --script build_scripts/embed_patches.py "$wheel" "build_scripts/patches/${CAUSAL_CONV1D_VERSION}" \
@@ -168,7 +168,11 @@ jobs:
               --source-tag "${CAUSAL_CONV1D_VERSION}" \
               --source-commit "${SOURCE_COMMIT}" \
               --build-repo "https://github.com/astral-sh-build/build-causal-conv1d" \
-              --build-commit "${BUILD_COMMIT}"
+              --build-commit "${BUILD_COMMIT}" \
+              --license-expression "BSD-3-Clause AND Apache-2.0" \
+              --license-file "LICENSE:LICENSE" \
+              --license-file "AUTHORS:AUTHORS" \
+              --license-file "build_scripts/LICENSE:astral-sh-build/LICENSE"
           done
         env:
           CAUSAL_CONV1D_VERSION: ${{ steps.causal-conv1d-version.outputs.version }}
