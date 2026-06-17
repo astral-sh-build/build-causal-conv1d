@@ -197,4 +197,4 @@ jobs:
         if: github.event_name == 'release'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" ./dist/*.whl --clobber
+        run: gh release upload "${GITHUB_REF_NAME}" ./dist/*.whl --clobber --repo "${GITHUB_REPOSITORY}"
