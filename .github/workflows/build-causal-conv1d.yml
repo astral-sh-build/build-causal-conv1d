@@ -67,7 +67,7 @@ jobs:
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             TAG="${INPUTS_RELEASE_TAG}"
             # Remove -rN suffix if present
-            CAUSAL_CONV1D_VERSION=$(printf '%s\\n' "${TAG}" | sed -E 's/-r[0-9]+$//')
+            CAUSAL_CONV1D_VERSION=$(sed -E 's/-r[0-9]+$//' <<<"${TAG}")
           else
             CAUSAL_CONV1D_VERSION="v1.6.0"
           fi
