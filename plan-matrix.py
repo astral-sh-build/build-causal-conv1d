@@ -17,14 +17,15 @@ CAUSAL_CONV1D_SUPPORTED_TORCH_VERSIONS = [
     "2.6.0",
     "2.7.1",
     "2.8.0",
-    "2.9.0",
+    "2.9.1",
     "2.10.0",
     "2.11.0",
+    "2.12.1",
 ]
 
 ARCH_TORCH_PAIRS = {
-    "x86_64": ["2.4.1", "2.5.1", "2.6.0", "2.7.1", "2.8.0", "2.9.0", "2.10.0", "2.11.0"],
-    "aarch64": ["2.6.0", "2.7.1", "2.8.0", "2.9.0", "2.10.0", "2.11.0"],
+    "x86_64": ["2.4.1", "2.5.1", "2.6.0", "2.7.1", "2.8.0", "2.9.1", "2.10.0", "2.11.0", "2.12.1"],
+    "aarch64": ["2.6.0", "2.7.1", "2.8.0", "2.9.1", "2.10.0", "2.11.0", "2.12.1"],
 }
 
 # Supported Python versions for each PyTorch version.
@@ -35,9 +36,10 @@ TORCH_PYTHON_SUPPORT = {
     "2.6": ["3.9", "3.10", "3.11", "3.12"],
     "2.7": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2.8": ["3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2.9": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "2.9": ["3.10", "3.11", "3.12", "3.13"],
     "2.10": ["3.10", "3.11", "3.12", "3.13", "3.14"],
     "2.11": ["3.10", "3.11", "3.12", "3.13", "3.14"],
+    "2.12": ["3.10", "3.11", "3.12", "3.13", "3.14"],
 }
 
 # Minimum and maximum CUDA versions for each PyTorch version.
@@ -51,6 +53,7 @@ PYTORCH_CUDA_RANGES: dict[str, tuple[str, str]] = {
     "2.9": ("12.6", "13.0"),
     "2.10": ("12.6", "13.0"),
     "2.11": ("12.6", "13.0"),
+    "2.12": ("12.6", "13.2"),
 }
 
 # Actual CUDA versions to build against for each PyTorch version.
@@ -71,6 +74,8 @@ PYTORCH_CUDA_VERSIONS: dict[tuple[str, str], list[str]] = {
     ("2.10", "aarch64"): ["12.6", "12.8", "12.9", "13.0"],
     ("2.11", "x86_64"): ["12.6", "12.8", "12.9", "13.0"],
     ("2.11", "aarch64"): ["12.6", "12.8", "12.9", "13.0"],
+    ("2.12", "x86_64"): ["12.6", "13.0", "13.2"],
+    ("2.12", "aarch64"): ["12.6", "13.0", "13.2"],
 }
 
 # The glibc version to use for each PyTorch version, for manylinux builds.
@@ -84,6 +89,7 @@ TORCH_GLIBC_VERSION: dict[str, str] = {
     "2.9": "2_28",
     "2.10": "2_28",
     "2.11": "2_28",
+    "2.12": "2_28",
 }
 
 AUDITWHEEL_BLANKET_EXCLUDES = [
@@ -219,7 +225,7 @@ def main() -> None:
 
     # For PR builds, limit matrix to a single entry for faster CI.
     if os.environ.get("LIMIT_MATRIX") == "1":
-        rows = rows[:1]
+        rows = rows[-1:]
     print(json.dumps(rows))
 
 
