@@ -22,5 +22,5 @@ jobs:
         with:
           node-version: "20"
 
-      - run: npm install -g prettier
+      - run: npm install -g prettier@3.8.4 # zizmor: ignore[adhoc-packages]
       - run: prettier --check "**/*.{yml,yaml}"
