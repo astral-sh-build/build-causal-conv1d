@@ -1,0 +1,27 @@
+[project]
+name = "build-causal-conv1d-gpu-tests"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "causal-conv1d==1.6.2.post1+cu.12.8.torch.2.10",
+    "numpy>=2,<3",
+    "pytest>=8,<10",
+    "torch==2.10.0+cu128",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[tool.uv.sources]
+causal-conv1d = { index = "astral-cu128" }
+torch = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "astral-cu128"
+url = "https://wheels.astral.sh/simple/cu128/"
+explicit = true
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true

@@ -37,6 +37,19 @@ Or, with `uv pip`:
 $ uv pip install --index https://wheels.astral.sh/simple/cu128/ causal-conv1d
 ```
 
+## GPU tests
+
+The `tests/` directory contains a locked uv project that installs the published
+CUDA 12.8 wheel from the Astral index alongside its matching PyTorch build. Run
+the tests on a Modal GPU with:
+
+```console
+$ modal run tests/modal_app.py
+```
+
+Modal installs the locked dependencies in its Linux image and runs the pytest
+suite on an NVIDIA A10G. The CUDA wheel is not installed on the local machine.
+
 ## Supported versions
 
 Wheels are available for the following `causal-conv1d` versions:
