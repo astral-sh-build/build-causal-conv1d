@@ -9,8 +9,8 @@ PyTorch, CUDA, and CPU architectures.
 Following the PyTorch convention, artifacts are published to a separate index
 for each CUDA version. Each wheel has a local version suffix that identifies the
 CUDA and PyTorch versions it was built against, such as
-`causal-conv1d==1.6.2.post1+cu.12.8.torch.2.11`, and requires the matching
-PyTorch release.
+`causal-conv1d==1.7.0+cu.12.8.torch.2.11`, and requires the matching PyTorch
+release.
 
 Pre-built wheels are available on
 [Astral's GPU indexes](https://wheels.astral.sh/index.html). For example, to
@@ -54,13 +54,13 @@ suite on an NVIDIA A10G. The CUDA wheel is not installed on the local machine.
 
 Wheels are available for the following `causal-conv1d` versions:
 
-- [`1.6.2.post1`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.7.0)
+- [`1.7.0`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.7.0)
+- [`1.6.2.post1`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.6.2.post1)
 - [`1.6.1`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.6.1.post4)
 - [`1.6.0`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.6.0-r1)
 - [`1.5.4`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.5.4-r2)
 
-The latest release, Causal Conv1d 1.6.2.post1, supports the following
-combinations:
+The latest release, Causal Conv1d 1.7.0, supports the following combinations:
 
 | PyTorch | Python    | `x86_64` CUDA          | `aarch64` CUDA         |
 | ------- | --------- | ---------------------- | ---------------------- |
