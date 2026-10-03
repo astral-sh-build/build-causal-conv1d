@@ -236,9 +236,8 @@ def main() -> None:
             raise ValueError(f"Unknown target arch: {row['target-arch']}")
 
     # For PR builds, limit matrix to a single entry for faster CI.
-    # Temporarily validate every newly supported compatibility build.
     if os.environ.get("LIMIT_MATRIX") == "1":
-        rows = [row for row in rows if row['torch-version'] in ('2.13.0', '2.14.1') or row['python-version'] in ('3.15',)]
+        rows = rows[-1:]
     print(json.dumps(rows))
 
 
