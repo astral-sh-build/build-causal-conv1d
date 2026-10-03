@@ -6,7 +6,7 @@ on:
     paths:
       - ".github/workflows/**"
   pull_request:
-    branches: [main]
+    branches: [main, "charlie/gpu-audit-*"]
     paths:
       - ".github/workflows/**"
   workflow_dispatch:

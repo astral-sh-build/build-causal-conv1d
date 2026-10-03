@@ -13,8 +13,8 @@ CUDA and PyTorch versions it was built against, such as
 PyTorch release.
 
 Pre-built wheels are available on
-[Astral's GPU indexes](https://wheels.astral.sh/index.html).
-For example, to install a CUDA 12.8 build:
+[Astral's GPU indexes](https://wheels.astral.sh/index.html). For example, to
+install a CUDA 12.8 build:
 
 ```console
 $ uv add causal-conv1d --index astral-cu128=https://wheels.astral.sh/simple/cu128/
@@ -54,7 +54,7 @@ suite on an NVIDIA A10G. The CUDA wheel is not installed on the local machine.
 
 Wheels are available for the following `causal-conv1d` versions:
 
-- [`1.6.2.post1`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.6.2.post1)
+- [`1.6.2.post1`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.7.0)
 - [`1.6.1`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.6.1.post4)
 - [`1.6.0`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.6.0-r1)
 - [`1.5.4`](https://github.com/astral-sh-build/build-causal-conv1d/releases/tag/v1.5.4-r2)
@@ -73,6 +73,8 @@ combinations:
 | 2.10.0  | 3.10–3.14 | 12.6, 12.8, 12.9, 13.0 | 12.6, 12.8, 12.9, 13.0 |
 | 2.11.0  | 3.10–3.14 | 12.6, 12.8, 12.9, 13.0 | 12.6, 12.8, 12.9, 13.0 |
 | 2.12.1  | 3.10–3.14 | 12.6, 13.0, 13.2       | 12.6, 13.0, 13.2       |
+| 2.13.0  | 3.10–3.15 | 12.6, 13.0, 13.2       | 12.6, 13.0, 13.2       |
+| 2.14.1  | 3.10–3.15 | 12.6, 13.0, 13.2       | 12.6, 13.0, 13.2       |
 
 ## License
 

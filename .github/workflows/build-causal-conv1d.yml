@@ -4,7 +4,7 @@ permissions: {}
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, "charlie/gpu-audit-*"]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -69,7 +69,7 @@ jobs:
             # Remove -rN suffix if present
             CAUSAL_CONV1D_VERSION=$(sed -E 's/-r[0-9]+$//' <<<"${TAG}")
           else
-            CAUSAL_CONV1D_VERSION="v1.6.0"
+            CAUSAL_CONV1D_VERSION="v1.7.0"
           fi
           echo "version=${CAUSAL_CONV1D_VERSION}" >> $GITHUB_OUTPUT
           echo "Using CausalConv1d version: ${CAUSAL_CONV1D_VERSION}"
