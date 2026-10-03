@@ -55,7 +55,7 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan-matrix.outputs.batches) }}
-    uses: ./.github/workflows/build-wheels-batch.yml
+    uses: $/.github/workflows/build-wheels-batch.yml
     with:
       matrix: ${{ matrix.build-matrix }}
       release_tag: ${{ inputs.release_tag || '' }}
